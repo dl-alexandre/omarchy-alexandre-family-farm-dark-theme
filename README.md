@@ -18,4 +18,4 @@ Or *Install > Style > Theme* and paste that URL.
 
 ## License
 
-MIT
+All rights reserved. Personal Omarchy use only; logo and photos stay with Alexandre Family Farm.
