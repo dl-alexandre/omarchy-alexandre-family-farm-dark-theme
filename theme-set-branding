@@ -1,0 +1,156 @@
+#!/bin/bash
+# Apply theme branding (screensaver.txt, about.txt, about.png) when present.
+# Restore the user's previous files when switching to a theme that has none.
+#
+# Omarchy does not apply About/fastfetch logos from a theme repo on its own.
+# Copy this file to ~/.config/omarchy/hooks/theme-set.d/ on each machine:
+#   install -D ~/.config/omarchy/themes/<theme>/hooks/theme-set.d/screensaver-from-theme \
+#     ~/.config/omarchy/hooks/theme-set.d/screensaver-from-theme
+set -euo pipefail
+
+THEME="${1:-}"
+CURRENT_THEME="$HOME/.local/state/omarchy/current/theme"
+USER_THEME="$HOME/.config/omarchy/themes/$THEME"
+if [[ -f $CURRENT_THEME/about.png || -f $CURRENT_THEME/about.txt || -f $CURRENT_THEME/screensaver.txt ]]; then
+  THEME_DIR="$CURRENT_THEME"
+else
+  THEME_DIR="$USER_THEME"
+fi
+BRAND_DIR="$HOME/.config/omarchy/branding"
+STATE_DIR="$HOME/.local/state/omarchy"
+FF_CONF="$HOME/.config/fastfetch/config.jsonc"
+FF_STOCK="/etc/fastfetch/config.jsonc"
+FF_STATE="$STATE_DIR/fastfetch-from-theme"
+
+mkdir -p "$STATE_DIR" "$BRAND_DIR" "$HOME/.config/fastfetch"
+
+apply_branding_file() {
+  local name="$1"
+  local src="$THEME_DIR/$name"
+  local dest="$BRAND_DIR/$name"
+  local user_save="$BRAND_DIR/${name%.txt}.user.txt"
+  local state="$STATE_DIR/${name%.txt}-from-theme"
+
+  if [[ -f $src ]]; then
+    if [[ ! -f $state && -f $dest ]]; then
+      cp "$dest" "$user_save"
+    fi
+    cp "$src" "$dest"
+    printf '%s\n' "$THEME" >"$state"
+  else
+    if [[ -f $state && -f $user_save ]]; then
+      cp "$user_save" "$dest"
+      rm -f "$state"
+    fi
+  fi
+}
+
+apply_branding_png() {
+  local name="$1"
+  local src="$THEME_DIR/$name"
+  local dest="$BRAND_DIR/$name"
+  local user_save="$BRAND_DIR/${name%.png}.user.png"
+  local state="$STATE_DIR/${name%.png}-png-from-theme"
+
+  if [[ -f $src ]]; then
+    if [[ ! -f $state && -f $dest ]]; then
+      cp "$dest" "$user_save"
+    fi
+    cp "$src" "$dest"
+    printf '%s\n' "$THEME" >"$state"
+  else
+    if [[ -f $state ]]; then
+      if [[ -f $user_save ]]; then
+        cp "$user_save" "$dest"
+      else
+        rm -f "$dest"
+      fi
+      rm -f "$state"
+    fi
+  fi
+}
+
+apply_fastfetch_branding() {
+  if [[ ! -f $FF_STOCK ]]; then
+    return 0
+  fi
+
+  if [[ -f $THEME_DIR/about.png ]]; then
+    python3 - "$FF_STOCK" "$FF_CONF" "$THEME_DIR/about.fastfetch.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+stock, dest, size_path = sys.argv[1], sys.argv[2], sys.argv[3]
+width, height = 48, 24
+if Path(size_path).is_file():
+    size = json.loads(Path(size_path).read_text())
+    width = int(size.get("width", width))
+    height = int(size.get("height", height))
+text = Path(stock).read_text()
+old = '''  "logo": {
+    "type": "file",
+    "source": "~/.config/omarchy/branding/about.txt",
+    "color": { "1": "green" },
+    "padding": {
+      "top": 2,
+      "right": 6,
+      "left": 2
+    }
+  },'''
+new = f'''  "logo": {{
+    "type": "auto",
+    "source": "~/.config/omarchy/branding/about.png",
+    "width": {width},
+    "height": {height},
+    "padding": {{
+      "top": 2,
+      "right": 2,
+      "left": 1
+    }}
+  }},'''
+if old not in text:
+    raise SystemExit("fastfetch logo block not found in stock config")
+Path(dest).write_text(text.replace(old, new, 1))
+PY
+    printf '%s\n' "$THEME" >"$FF_STATE"
+    return 0
+  fi
+
+  local primary charcoal highlight
+  case "$THEME" in
+  milc-one)
+    primary="#5D820E"
+    charcoal="#353036"
+    highlight="#ffffff"
+    ;;
+  milc-one-dark)
+    primary="#5D820E"
+    charcoal="#7d7880"
+    highlight="#ffffff"
+    ;;
+  *)
+    if [[ -f $FF_STATE ]]; then
+      rm -f "$FF_CONF" "$FF_STATE"
+    fi
+    return 0
+    ;;
+  esac
+
+  python3 - "$FF_STOCK" "$FF_CONF" "$primary" "$charcoal" "$highlight" <<'PY'
+import sys
+from pathlib import Path
+stock, dest, primary, charcoal, highlight = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+text = Path(stock).read_text()
+old = '    "color": { "1": "green" },'
+new = f'    "color": {{ "1": "{primary}", "2": "{charcoal}", "3": "{highlight}" }},'
+if old not in text:
+    raise SystemExit("fastfetch color line not found in stock config")
+Path(dest).write_text(text.replace(old, new, 1))
+PY
+  printf '%s\n' "$THEME" >"$FF_STATE"
+}
+
+apply_branding_file screensaver.txt
+apply_branding_file about.txt
+apply_branding_png about.png
+apply_fastfetch_branding

@@ -12,6 +12,13 @@ omarchy theme install https://github.com/dl-alexandre/omarchy-alexandre-family-f
 
 Or *Install > Style > Theme* and paste that URL.
 
+Omarchy does not apply a theme's About/fastfetch logo by itself. After install, once per machine:
+
+```bash
+omarchy hook install theme-set ~/.config/omarchy/themes/alexandre-family-farm-dark/theme-set-branding
+omarchy theme set "Alexandre Family Farm Dark"
+```
+
 ## Preview
 
 ![preview](preview.png)
